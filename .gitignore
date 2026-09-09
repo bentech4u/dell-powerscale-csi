@@ -4,3 +4,4 @@ dell-csi-helm-installer/*.log
 check-powerscale.json
 test/mock-onefs/*.pem
 __pycache__/
+test/mock-onefs/mock.log

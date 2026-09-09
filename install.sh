@@ -39,7 +39,9 @@ fi
 
 echo "==> Running Dell helm installer (OpenShift is auto-detected; node SSH checks skipped: RHCOS has no root SSH)"
 cd "$HERE/dell-csi-helm-installer"
-./csi-install.sh --namespace "$NS" --values "$VALUES" --skip-verify-node "$@"
+# Dell's script prompts "Press y to continue" on verification warnings (its -Y flag is not actually parsed),
+# so feed the answer on stdin to keep the wrapper unattended.
+printf 'yyyyyyyyyy' | ./csi-install.sh --namespace "$NS" --values "$VALUES" --skip-verify-node "$@"
 
 echo "==> StorageClass"
 oc apply -f "$HERE/storageclass.yaml"

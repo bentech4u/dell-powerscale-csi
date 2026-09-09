@@ -143,4 +143,31 @@ unless you enable replication, authorization or podmon.
 * KUBECONFIG defaults to /opt/ocpdeploy/clusters/homeshift/install/auth/kubeconfig.
 * Node SSH verification is skipped (RHCOS has no root SSH). NFS client is present on the nodes (nfs-utils).
 * Dell's verify script flags OpenShift 4.22 as "newer than tested (4.21)"; that is a warning only.
+  `csi-install.sh` then prompts "Press y to continue" (its `-Y` flag is printed in a message but never
+  parsed), so `install.sh` feeds the answers on stdin to stay unattended.
+* The helm release is named `isilon` (Dell strips the `csi-` prefix from the driver name).
+* Proven on homeshift 2026-09-09 with the mock array (test/mock-onefs): helm install/upgrade on 4.22.12,
+  SCC bindings, image pulls, controller 6/6 and node 2/2 Running on all three workers, CSIDriver and
+  CSINode registrations, StorageClass `isilon` created. PV provisioning needs a real OneFS.
+* Driver start-up probe calls, in order: `GET /platform/latest/`, `POST /session/1/session/`
+  (isiAuthType 1), `GET /platform/3/cluster/config/`. All with trailing slashes.
+* On OpenShift the node plugin derives the node FQDN by reverse DNS of the node IP, which resolves to
+  `<ip>.kube-rbac-proxy-crio.openshift-machine-config-operator.svc.cluster.local`. The driver puts both
+  that name and the IP in the NFS export client list, so the IP is what matters on the array.
 * The driver needs the nodes to reach the array's NFS ports and the controller to reach the OneFS API (default 8080/tcp).
+
+## Links
+
+* Dell CSI PowerScale driver: https://github.com/dell/csi-powerscale
+* Helm installer scripts (vendored here): https://github.com/dell/csi-powerscale/tree/main/dell-csi-helm-installer
+* Helm charts: https://github.com/dell/helm-charts (tag `csi-isilon-2.17.1`, `charts/csi-isilon`)
+* CSM docs, PowerScale helm install (prerequisites, values reference, privileges): https://dell.github.io/csm-docs/docs/getting-started/installation/kubernetes/powerscale/helm/
+* CSM docs, PowerScale troubleshooting: https://dell.github.io/csm-docs/docs/concepts/csidriver/troubleshooting/powerscale/
+* CSM support matrix (OneFS / OpenShift versions): https://dell.github.io/csm-docs/docs/getting-started/supportmatrix/
+* cert-csi (Dell's CSI conformance tool, suggested for untested OpenShift versions): https://dell.github.io/csm-docs/docs/support/cert-csi/
+* CSM operator alternative in OperatorHub: `dell-csm-operator-certified` (Certified Operators catalog)
+* OneFS Simulator (free VMware OVA, real OneFS for lab testing; Dell support login needed):
+  https://www.dell.com/support/kbdoc/en-us/000021453/how-to-download-the-onefs-simulator
+  (also listed under Downloads for PowerScale OneFS on https://www.dell.com/support/home/en-us/product-support/product/isilon-onefs/drivers)
+* OneFS API reference (Platform API used by check-powerscale.py): https://www.dell.com/support/home/en-us/product-support/product/isilon-onefs/docs
+* Helm: https://helm.sh/docs/intro/install/  (vendored: v3.19.0, https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz)
