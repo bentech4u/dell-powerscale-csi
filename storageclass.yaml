@@ -1,0 +1,15 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: isilon
+provisioner: csi-isilon.dellemc.com
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+parameters:
+  AccessZone: System
+  IsiPath: /ifs/data/csi
+  RootClientEnabled: "false"
+  # ClusterName: powerscale1      # only needed if more than one cluster is in isilon-creds
+  # AzServiceIP: <SmartConnect IP/FQDN>   # NFS data path if different from the API endpoint
+  csi.storage.k8s.io/fstype: nfs

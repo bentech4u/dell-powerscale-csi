@@ -1,0 +1,3 @@
+secrets/isilon-creds.yaml
+csi-powerscale/
+helm-charts/
