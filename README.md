@@ -25,6 +25,43 @@ install.sh / uninstall.sh    wrappers around csi-install.sh / csi-uninstall.sh
    Add `--upgrade` to re-apply changed values later.
 3. `oc apply -f test/pvc-pod.yaml` and check `oc -n isilon get pvc,pod`.
 
+## Using Dell's scripts directly
+
+`install.sh` is only a convenience wrapper. The vendored Dell scripts can be run on their own from
+the `dell-csi-helm-installer/` directory. They need `KUBECONFIG` exported, and the namespace and
+secrets already created (steps below), which is what the wrapper does for you.
+
+```bash
+export KUBECONFIG=/opt/ocpdeploy/clusters/homeshift/install/auth/kubeconfig
+cd /root/isilon/dell-csi-helm-installer
+
+# one-time prerequisites (namespace + secrets)
+oc create ns isilon
+oc -n isilon create secret generic isilon-creds --from-file=config=../secrets/isilon-creds.yaml
+oc apply -f ../secrets/isilon-certs-0.yaml
+
+# verify only (no changes to the cluster)
+./verify.sh --namespace isilon --values ../my-isilon-settings.yaml --driver-version v2.17.1 --skip-verify-node
+
+# install (runs verify first, then helm install)
+./csi-install.sh --namespace isilon --values ../my-isilon-settings.yaml --skip-verify-node
+
+# upgrade / re-apply changed values
+./csi-install.sh --namespace isilon --values ../my-isilon-settings.yaml --skip-verify-node --upgrade
+
+# uninstall (removes the helm release; secrets and namespace stay)
+./csi-uninstall.sh --namespace isilon
+```
+
+Notes on the flags:
+
+* `--driver-version v2.17.1` is required when running `verify.sh` by hand. `csi-install.sh` passes it
+  automatically; without it verify reports `Incompatible helm values file specified - expected: , found: v2.17.1`.
+* `--skip-verify-node` skips the SSH checks against worker nodes. RHCOS does not allow root SSH, so
+  without this flag the node checks fail. The NFS client is already present on RHCOS.
+* `--skip-verify` skips all verification, not recommended.
+* `-h` on any script prints its full usage.
+
 ## Notes
 
 * Tools installed on this host: helm 3.19 in /usr/local/bin, `kubectl` symlinked to the cluster's `oc`.
