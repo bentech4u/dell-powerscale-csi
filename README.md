@@ -1,12 +1,13 @@
 # Dell CSI PowerScale (Isilon) driver on homeshift
 
 Installs csi-powerscale **v2.17.1** on the `homeshift` OpenShift 4.22 cluster using Dell's
-`dell-csi-helm-installer` scripts (https://github.com/dell/csi-powerscale/tree/main/dell-csi-helm-installer).
+`dell-csi-helm-installer` scripts (https://github.com/dell/csi-powerscale/tree/main/dell-csi-helm-installer), copied into this repo unchanged.
+The scripts clone https://github.com/dell/helm-charts at tag csi-isilon-2.17.1 on each run.
 
 ## Layout
 
 ```
-csi-powerscale/              upstream clone (git-ignored); scripts in dell-csi-helm-installer/
+dell-csi-helm-installer/     Dell's installer scripts, copied from csi-powerscale (CSM 1.17.1, Apache-2.0)
 my-isilon-settings.yaml      helm values (from helm-charts tag csi-isilon-2.17.1)
 secrets/isilon-creds.yaml    OneFS API credentials -> secret isilon-creds (git-ignored, fill in!)
 secrets/isilon-certs-0.yaml  empty CA secret isilon-certs-0 (required even when skipping TLS checks)

@@ -30,7 +30,7 @@ if ! curl -sk -m 10 -o /dev/null "https://$EP:$PORT/platform/latest"; then
 fi
 
 echo "==> Running Dell helm installer (node SSH checks skipped: RHCOS has no root SSH)"
-cd "$HERE/csi-powerscale/dell-csi-helm-installer"
+cd "$HERE/dell-csi-helm-installer"
 ./csi-install.sh --namespace "$NS" --values "$VALUES" --skip-verify-node "$@"
 
 echo "==> StorageClass"

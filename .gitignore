@@ -1,3 +1,4 @@
 secrets/isilon-creds.yaml
 csi-powerscale/
 helm-charts/
+dell-csi-helm-installer/*.log
