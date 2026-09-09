@@ -136,6 +136,101 @@ then either edit the `images:` section of `my-isilon-settings.yaml` to the mirro
 your registry. Only the seven images referenced by the default values (driver + six sidecars) are needed
 unless you enable replication, authorization or podmon.
 
+## Testing without a PowerScale
+
+### Option A: OneFS Simulator (real OneFS, recommended)
+
+Dell publishes the **OneFS Simulator** as a free VMware OVA for non-production use. It is the real OneFS
+software running as virtual nodes, so the Platform API, NFS, SmartQuotas, SnapshotIQ and access zones
+behave exactly like a hardware cluster. It is the standard way to test this driver in a lab, and it is
+the only way to test PV provisioning, snapshots and expansion before the real array exists.
+
+* Download: https://www.dell.com/support/kbdoc/en-us/000021453/how-to-download-the-onefs-simulator
+  (needs a Dell support login; pick the OneFS version you will run in production, 9.5 - 9.10 for
+  driver 2.17).
+* Runs on ESXi / vCenter. Each virtual node is roughly 4 vCPU, 8 GB RAM and a few small virtual disks
+  shipped in the OVA; one node is enough for CSI testing, three gives you a proper cluster. Check the
+  simulator release notes for the exact sizing of your version.
+* Two port groups: an internal back-end network (int-a, node-to-node) and the external front-end
+  network (ext-1) on the same LAN as the OpenShift nodes (192.168.68.0/24 here).
+* First boot opens the cluster wizard on the VM console: cluster name, root and admin passwords,
+  int-a / ext-1 IP ranges, netmask, gateway, DNS, and the SmartConnect zone name (add a DNS
+  delegation for it on the AD server, or just use an ext-1 IP as `AzServiceIP`).
+* After the wizard, log in to https://<ext-1 IP>:8080 (WebUI and API share the port) and prepare it
+  for the driver:
+
+  ```
+  isi license list                          # SmartQuotas / SnapshotIQ show as Evaluation
+  isi services nfs enable
+  mkdir -p /ifs/data/csi && chmod 777 /ifs/data/csi
+  isi auth users create csiuser --enabled yes --password '<pw>' --zone System
+  isi auth roles create CSIRole --zone System
+  isi auth roles modify CSIRole --zone System --add-user csiuser \
+    --add-priv-read ISI_PRIV_LOGIN_PAPI --add-priv-read ISI_PRIV_IFS_RESTORE \
+    --add-priv-read ISI_PRIV_NS_IFS_ACCESS --add-priv-read ISI_PRIV_IFS_BACKUP \
+    --add-priv-read ISI_PRIV_AUTH_ZONES --add-priv-read ISI_PRIV_STATISTICS \
+    --add-priv-write ISI_PRIV_NFS --add-priv-write ISI_PRIV_QUOTA --add-priv-write ISI_PRIV_SNAPSHOT
+  ```
+
+* Then: put the ext-1 IP and `csiuser` into `secrets/isilon-creds.yaml`, run `./check-powerscale.py
+  --from-node` (everything should be PASS), `./install.sh`, and `oc apply -f test/pvc-pod.yaml`.
+
+### Option B: mock OneFS API (install path only)
+
+`test/mock-onefs/mock_onefs.py` is a ~90-line fake of the Platform API endpoints used by
+`check-powerscale.py` and by the driver's start-up probe. It has no filesystem and no NFS server, so
+it can only prove the **OpenShift side** of the install: chart on this OCP version, SCC bindings, image
+pulls, secrets, session auth, node registration, CSIDriver/CSINode objects, StorageClass. Any PVC
+against it will fail.
+
+This is what was run on homeshift (OCP 4.22.12) on 2026-09-09, result: controller 6/6 and node 2/2
+Running on all three workers, StorageClass `isilon` created.
+
+1. Start the mock on the installer host, bound to the LAN address so the cluster nodes can reach it:
+
+   ```bash
+   cd /root/isilon/test/mock-onefs
+   openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 30 -subj "/CN=mock-onefs"
+   systemd-run --unit=mock-onefs --working-directory=$PWD \
+     -p StandardOutput=append:$PWD/mock.log -p StandardError=append:$PWD/mock.log \
+     python3 mock_onefs.py 8443 0.0.0.0
+   curl -sk https://192.168.68.121:8443/platform/latest      # {"latest": "21"}
+   ```
+
+2. Point the secret at it (`secrets/isilon-creds.yaml`, git-ignored):
+
+   ```yaml
+   isilonClusters:
+     - clusterName: "mock-powerscale"
+       username: "csiuser"
+       password: "secret"
+       endpoint: "192.168.68.121"        # installer host, where the mock listens
+       endpointPort: 8443
+       isDefault: true
+       skipCertificateValidation: true
+       isiPath: "/ifs/data/csi"
+       isiVolumePathPermissions: "0777"
+   ```
+
+3. `./check-powerscale.py` - expect PASS for API, auth, zone, path, NFS service, and FAIL only for
+   TCP 2049 (no NFS on the mock) plus the two privilege gaps the mock deliberately has.
+
+4. `./install.sh` (or `./install.sh --upgrade` if the release exists), then check:
+
+   ```bash
+   oc -n isilon get pods -o wide
+   oc get csidriver csi-isilon.dellemc.com
+   oc get csinode -o custom-columns='NODE:.metadata.name,DRIVERS:.spec.drivers[*].name'
+   oc get sc isilon
+   tail -f test/mock-onefs/mock.log        # requests from the driver; unknown ones say UNMOCKED
+   ```
+
+5. Clean up: `systemctl stop mock-onefs`, then either `./uninstall.sh` or replace the secret with the
+   real array and `./install.sh --upgrade`.
+
+If a newer driver probes an endpoint the mock does not know, the pods crash-loop and `mock.log` shows
+`UNMOCKED GET <path>`; add a handler for it in `mock_onefs.py` and `systemctl restart mock-onefs`.
+
 ## Notes
 
 * `install.sh` prepends `bin/` to PATH, so the vendored helm is used and Dell's `kubectl` calls go to `oc`.
