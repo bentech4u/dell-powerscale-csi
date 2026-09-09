@@ -258,6 +258,7 @@ def main():
         password = getpass.getpass(f"OneFS password for {user}@{host}: ")
 
     print(f"PowerScale pre-flight  endpoint={host}:{port}  user={user}  zone={zone}  isiPath={ipath}")
+    suggest.update(endpoint=host, endpointPort=port, username=user, isiPathRequested=ipath)
 
     # --- network ---------------------------------------------------------------
     section("Network")
@@ -507,15 +508,37 @@ def finish(a):
     warns = [r for r in results if r[0] == "warn"]
     section("Summary")
     print(f"  {len(fails)} failed, {len(warns)} warnings")
-    if suggest:
-        print("\n  Values for my-isilon-settings.yaml / secrets/isilon-creds.yaml:")
-        for k in ("isiAuthType", "isiAccessZone", "isiPath", "skipCertificateValidation", "enableQuota"):
-            if k in suggest:
-                print(f"    {k}: {json.dumps(suggest[k])}")
-        if suggest.get("clusterName"):
-            print(f"    clusterName: {json.dumps(suggest['clusterName'])}   # logical name; any string is fine")
-        if suggest.get("AzServiceIP"):
-            print(f"\n  StorageClass parameter:\n    AzServiceIP: {json.dumps(suggest['AzServiceIP'])}")
+    if suggest.get("clusterName") or suggest.get("isiAccessZone"):
+        q = json.dumps
+        cluster = suggest.get("clusterName") or "powerscale1"
+        zone = suggest.get("isiAccessZone", "System")
+        ipath = suggest.get("isiPath") or suggest.get("isiPathRequested", "/ifs/data/csi")
+        skip = suggest.get("skipCertificateValidation", True)
+        print("\n  secrets/isilon-creds.yaml (secret isilon-creds):")
+        print(f"    isilonClusters:\n"
+              f"      - clusterName: {q(cluster)}\n"
+              f"        username: {q(suggest.get('username', ''))}\n"
+              f"        password: \"<password>\"\n"
+              f"        endpoint: {q(suggest.get('endpoint', ''))}\n"
+              f"        endpointPort: {suggest.get('endpointPort', 8080)}\n"
+              f"        isDefault: true\n"
+              f"        skipCertificateValidation: {q(skip)}\n"
+              f"        isiPath: {q(ipath)}\n"
+              f"        isiVolumePathPermissions: \"0777\"")
+        print("\n  my-isilon-settings.yaml (driver defaults):")
+        print(f"    endpointPort: {suggest.get('endpointPort', 8080)}\n"
+              f"    skipCertificateValidation: {q(skip)}\n"
+              f"    isiAuthType: {suggest.get('isiAuthType', 1)}\n"
+              f"    isiAccessZone: {q(zone)}\n"
+              f"    enableQuota: {q(suggest.get('enableQuota', True))}\n"
+              f"    isiPath: {q(ipath)}")
+        print("\n  storageclass.yaml (parameters):")
+        print(f"    ClusterName: {q(cluster)}\n"
+              f"    AccessZone: {q(zone)}\n"
+              f"    IsiPath: {q(ipath)}\n"
+              f"    AzServiceIP: {q(suggest.get('AzServiceIP') or suggest.get('endpoint', ''))}"
+              + ("" if suggest.get("AzServiceIP") else "   # no SmartConnect pool found for the zone; API address used")
+              + "\n    RootClientEnabled: \"false\"")
     if a.json:
         out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-powerscale.json")
         with open(out, "w") as f:

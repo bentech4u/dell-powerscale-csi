@@ -59,6 +59,12 @@ What it checks and where the driver uses it:
 | Privileges | roles of the API user vs Dell's required list, prints the fix command | secret user |
 | Network pools | SmartConnect zone names and IP ranges per access zone | StorageClass `AzServiceIP` |
 
+The summary ends with three ready-to-paste blocks: the `isilonClusters` entry for
+`secrets/isilon-creds.yaml` (clusterName, username, endpoint, endpointPort, skipCertificateValidation,
+isiPath), the matching defaults for `my-isilon-settings.yaml` (isiAuthType, isiAccessZone, isiPath,
+enableQuota, ...) and the `parameters` for `storageclass.yaml` (ClusterName, AccessZone, IsiPath,
+AzServiceIP).
+
 Required privileges (Dell CSM docs): LOGIN_PAPI r, NFS rw, QUOTA rw, SNAPSHOT rw, IFS_RESTORE r,
 NS_IFS_ACCESS r, IFS_BACKUP r, AUTH_ZONES r, STATISTICS r; SYNCIQ rw only for replication.
 
