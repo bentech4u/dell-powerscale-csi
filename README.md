@@ -17,6 +17,8 @@ secrets/isilon-certs-0.yaml  empty CA secret isilon-certs-0 (required even when 
 storageclass.yaml            StorageClass "isilon" (NFS, RWX)
 test/pvc-pod.yaml            smoke test: 1Gi RWX PVC + pod writing a file
 install.sh / uninstall.sh    wrappers around csi-install.sh / csi-uninstall.sh
+check-powerscale.py          pre-flight against the OneFS API: connectivity, TLS, auth type, zones, isiPath,
+                             NFS, licenses, API-user privileges, SmartConnect pools -> suggested values
 ```
 
 ## Steps
@@ -24,9 +26,41 @@ install.sh / uninstall.sh    wrappers around csi-install.sh / csi-uninstall.sh
 1. Edit `secrets/isilon-creds.yaml`: endpoint, username, password, isiPath. On the array make sure
    `isiPath` (default `/ifs/data/csi`) exists in the chosen access zone and the user has the
    OneFS API privileges Dell documents (ISI_PRIV_LOGIN_PAPI, NFS, QUOTA, SNAPSHOT, ...).
-2. `./install.sh` (creates namespace `isilon`, both secrets, runs the Dell installer, applies the StorageClass).
+2. `./check-powerscale.py` to validate the array side and get the values for `isiAccessZone`,
+   `isiPath`, `isiAuthType`, `skipCertificateValidation`, `enableQuota` and the StorageClass
+   `AzServiceIP`. Fix anything marked FAIL (it prints the `isi auth roles modify` command for missing
+   privileges; `--create-path` creates `isiPath`; `--from-node` also tests reachability from a worker).
+3. `./install.sh` (creates namespace `isilon`, both secrets, runs the Dell installer, applies the StorageClass).
    Add `--upgrade` to re-apply changed values later.
-3. `oc apply -f test/pvc-pod.yaml` and check `oc -n isilon get pvc,pod`.
+4. `oc apply -f test/pvc-pod.yaml` and check `oc -n isilon get pvc,pod`.
+
+## Pre-flight: check-powerscale.py
+
+Python 3 standard library only. It reads `secrets/isilon-creds.yaml` by default, or takes
+`--endpoint/--port/--user/--password` (password is prompted if omitted). Exit code 1 if anything failed.
+
+```bash
+./check-powerscale.py                          # from the creds file
+./check-powerscale.py --zone k8s --path /ifs/k8s/csi --create-path
+./check-powerscale.py --from-node              # add TCP tests from a worker node (uses oc debug)
+./check-powerscale.py --json                   # also write check-powerscale.json
+```
+
+What it checks and where the driver uses it:
+
+| Section | Checks | Drives |
+|---|---|---|
+| Network | DNS, TCP to API port, TCP 2049/111 to the NFS host | `endpoint`, `endpointPort`, `AzServiceIP` |
+| TLS | subject/issuer/expiry, trusted by this host? | `skipCertificateValidation` / `isilon-certs-0` |
+| API and auth | `/platform/latest`, basic auth, session auth, OneFS version | `isiAuthType` (1 if sessions work) |
+| Access zones | zone exists, isiPath is under the zone root | `isiAccessZone` |
+| Base path | `isiPath` exists (mode/owner), optional create | `isiPath` |
+| NFS and licenses | NFS service, v3/v4, exports under the path, SmartQuotas/SnapshotIQ/SyncIQ | `enableQuota`, snapshots, replication |
+| Privileges | roles of the API user vs Dell's required list, prints the fix command | secret user |
+| Network pools | SmartConnect zone names and IP ranges per access zone | StorageClass `AzServiceIP` |
+
+Required privileges (Dell CSM docs): LOGIN_PAPI r, NFS rw, QUOTA rw, SNAPSHOT rw, IFS_RESTORE r,
+NS_IFS_ACCESS r, IFS_BACKUP r, AUTH_ZONES r, STATISTICS r; SYNCIQ rw only for replication.
 
 ## Using Dell's scripts directly
 

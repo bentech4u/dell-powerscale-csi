@@ -1,3 +1,6 @@
 secrets/isilon-creds.yaml
 csi-powerscale/
 dell-csi-helm-installer/*.log
+check-powerscale.json
+test/mock-onefs/*.pem
+__pycache__/
