@@ -1,0 +1,140 @@
+{{ if .Values.karaviMetricsPowerflex.enabled }}
+{{- $authorizationConfigSecret := lookup "v1" "Secret" .Release.Namespace "karavi-authorization-config" }}
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: karavi-metrics-powerflex
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: karavi-metrics-powerflex
+  namespace: {{ include "custom.namespace" . }}
+spec:
+  type: {{ .Values.karaviMetricsPowerflex.service.type }}
+  ports:
+  - name: karavi-metrics-powerflex
+    port: 2222
+    targetPort: 2222
+  selector:
+    app.kubernetes.io/name: karavi-metrics-powerflex
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karavi-metrics-powerflex
+  namespace: {{ include "custom.namespace" . }}
+  labels:
+    app.kubernetes.io/name: karavi-metrics-powerflex
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- if hasKey .Values "karaviMetricsPowerflex.authorization" }}
+  {{- if eq .Values.karaviMetricsPowerflex.authorization.enabled true }}
+  annotations:
+    com.dell.karavi-authorization-proxy: "true"
+  {{ end }}
+  {{ end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: karavi-metrics-powerflex
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: karavi-metrics-powerflex
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccount: {{ .Release.Name }}-metrics-powerflex-controller
+      containers:
+      - name: karavi-metrics-powerflex
+        image: {{ .Values.karaviMetricsPowerflex.image }}
+        resources: {}
+        env:
+        - name: POWERFLEX_METRICS_ENDPOINT
+          value: "{{ .Values.karaviMetricsPowerflex.endpoint }}"
+        - name: POWERFLEX_METRICS_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: TLS_ENABLED
+          value: "true"
+        volumeMounts:
+        - name: vxflexos-config
+          mountPath: /vxflexos-config
+        - name: tls-secret
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: karavi-metrics-powerflex-configmap
+          mountPath: /etc/config
+      {{- if hasKey .Values.karaviMetricsPowerflex "authorization" }}
+      {{- if eq .Values.karaviMetricsPowerflex.authorization.enabled true }}
+      - name: karavi-authorization-proxy
+        imagePullPolicy: IfNotPresent
+        image: {{ required "Must provide the authorization sidecar container image." .Values.karaviMetricsPowerflex.authorization.sidecarProxy.image }}
+        env:
+          - name: PROXY_HOST
+            value: "{{ .Values.karaviMetricsPowerflex.authorization.proxyHost }}"
+          - name: SKIP_CERTIFICATE_VALIDATION
+            value: "{{ .Values.karaviMetricsPowerflex.authorization.skipCertificateValidation }}"
+          - name: PLUGIN_IDENTIFIER
+            value: powerflex
+          - name: ACCESS_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: proxy-authz-tokens
+                key: access
+          - name: REFRESH_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: proxy-authz-tokens
+                key: refresh
+        volumeMounts:
+          {{- if $authorizationConfigSecret }}
+          - name: karavi-authorization-config
+            mountPath: /etc/karavi-authorization/config
+          {{- else }}
+          - name: vxflexos-config
+            mountPath: /vxflexos-config
+          {{- end }}
+          - name: proxy-server-root-certificate
+            mountPath: /etc/karavi-authorization/root-certificates
+          - name: vxflexos-config-params
+            mountPath: /etc/karavi-authorization
+      {{ end }}
+      {{ end }}
+      volumes:
+      - name: vxflexos-config
+        secret:
+          secretName: vxflexos-config
+      - name: tls-secret
+        secret:
+          secretName: otel-collector-tls
+          items:
+            - key: tls.crt
+              path: cert.crt
+      - name: karavi-metrics-powerflex-configmap
+        configMap:
+          name: karavi-metrics-powerflex-configmap
+     {{- if hasKey .Values.karaviMetricsPowerflex "authorization" }}
+     {{- if eq .Values.karaviMetricsPowerflex.authorization.enabled true }}
+      {{- if $authorizationConfigSecret }}
+      - name: karavi-authorization-config
+        secret:
+          secretName: karavi-authorization-config
+      {{- end }}
+      - name: proxy-server-root-certificate
+        secret:
+          secretName: proxy-server-root-certificate
+      - name: vxflexos-config-params
+        configMap:
+          name: vxflexos-config-params
+      {{ end }}
+      {{ end }}
+      restartPolicy: Always
+status: {}
+
+{{ end }}

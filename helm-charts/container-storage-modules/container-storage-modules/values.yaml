@@ -1,0 +1,608 @@
+#
+#
+# Copyright © 2023-2025 Dell Inc. or its subsidiaries. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#      http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#
+## K8S/DRIVER ATTRIBUTES
+###################################
+
+## CSI PowerStore
+########################
+csi-powerstore:
+  enabled: false
+  version: "v2.17.0"
+  images:
+    # "driver" defines the container image, used for the driver container.
+    driver:
+      image: quay.io/dell/container-storage-modules/csi-powerstore:v2.17.0
+    # CSI sidecars
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.11.0
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+    registrar:
+      image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    healthmonitor:
+      image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+
+    # CSM sidecars
+    replication:
+      image: quay.io/dell/container-storage-modules/dell-csi-replicator:v1.15.0
+    vgsnapshotter:
+      image: quay.io/dell/container-storage-modules/csi-volumegroup-snapshotter:v1.8.1
+    podmon:
+      image: quay.io/dell/container-storage-modules/podmon:v1.16.0
+    metadataretriever:
+      image: quay.io/dell/container-storage-modules/csi-metadata-retriever:v1.14.0
+    authorization:
+      image: quay.io/dell/container-storage-modules/csm-authorization-sidecar:v2.5.0
+  ## Controller ATTRIBUTES
+  controller:
+    controllerCount: 2
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+    replication:
+      enabled: false
+    vgsnapshot:
+      enabled: false
+    snapshot:
+      enabled: true
+    resizer:
+      enabled: true
+  ## Node ATTRIBUTES
+  node:
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+  authorization:
+    enabled: false
+    proxyHost:
+    # Uncomment if CSM for Resiliency and CSI Driver pods monitor are enabled
+    # tolerations:
+    # - key: "offline.vxflexos.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "vxflexos.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "offline.unity.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "unity.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "offline.isilon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "isilon.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "offline.powerstore.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "powerstore.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+  storageCapacity:
+    enabled: true
+  # Enable this feature only after contact support for additional information
+  podmon:
+    enabled: false
+    controller:
+      args:
+        - "--csisock=unix:/var/run/csi/csi.sock"
+        - "--labelvalue=csi-powerstore"
+        - "--arrayConnectivityPollRate=60"
+        - "--driverPath=csi-powerstore.dellemc.com"
+        - "--mode=controller"
+        - "--skipArrayConnectionValidation=false"
+        - "--driver-config-params=/powerstore-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+    node:
+      args:
+        - "--csisock=unix:/var/lib/kubelet/plugins/csi-powerstore.dellemc.com/csi_sock"
+        - "--labelvalue=csi-powerstore"
+        - "--arrayConnectivityPollRate=60"
+        - "--driverPath=csi-powerstore.dellemc.com"
+        - "--mode=node"
+        - "--leaderelection=false"
+        - "--driver-config-params=/powerstore-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+  # maxPowerstoreVolumesPerNode: Specify default value for maximum number of volumes that controller can publish to the node.
+  maxPowerstoreVolumesPerNode: 0
+  multiNas:
+    threshold: 5
+    cooldownPeriod: 5m
+## CSI PowerMax
+########################
+csi-powermax:
+  enabled: false
+  global:
+    storageArrays:
+      - storageArrayId: "000000000001"
+        endpoint: https://primary-1.unisphe.re:8443
+        backupEndpoint: https://backup-1.unisphe.re:8443
+    #    - storageArrayId: "000000000002"
+    #      endpoint: https://primary-2.unisphe.re:8443
+    #      backupEndpoint: https://backup-2.unisphe.re:8443
+    managementServers:
+      - endpoint: https://primary-1.unisphe.re:8443
+      - endpoint: https://backup-1.unisphe.re:8443
+  #    - endpoint: https://primary-2.unisphe.re:8443
+  #    - endpoint: https://backup-2.unisphe.re:8443
+  version: "v2.17.1"
+  images:
+    # "driver" defines the container image, used for the driver container.
+    driver:
+      image: quay.io/dell/container-storage-modules/csi-powermax:v2.17.1
+    csireverseproxy:
+      image: quay.io/dell/container-storage-modules/csipowermax-reverseproxy:v2.16.1
+    # CSI sidecars
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.11.0
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+    registrar:
+      image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    healthmonitor:
+      image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+    # CSM sidecars
+    replication:
+      image: quay.io/dell/container-storage-modules/dell-csi-replicator:v1.15.0
+    authorization:
+      image: quay.io/dell/container-storage-modules/csm-authorization-sidecar:v2.5.0
+    migration:
+      image: quay.io/dell/container-storage-modules/dell-csi-migrator:v1.10.0
+    podmon:
+      image: quay.io/dell/container-storage-modules/podmon:v1.16.0
+    # Node rescan sidecar does a rescan on nodes for identifying new paths
+    noderescan:
+      image: quay.io/dell/container-storage-modules/dell-csi-node-rescanner:v1.11.0
+  clusterPrefix: ABC
+  portGroups: PortGroup1, PortGroup2, PortGroup3
+  controller:
+    controllerCount: 2
+    snapshot:
+      enabled: true
+    resizer:
+      enabled: true
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+  node:
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+  csireverseproxy:
+    deployAsSidecar: true
+  replication:
+    enabled: false
+  migration:
+    enabled: false
+  authorization:
+    enabled: false
+    proxyHost:
+  vSphere:
+    enabled: false
+    fcPortGroup: "csi-vsphere-VC-PG"
+    fcHostName: "csi-vsphere-VC-HN"
+    vCenterHost: "00.000.000.00"
+    vCenterCredSecret: vcenter-creds
+  storageCapacity:
+    enabled: true
+  maxPowerMaxVolumesPerNode: 0
+  dynamicSGEnabled: false
+
+## CSI PowerScale
+########################
+csi-isilon:
+  enabled: false
+  version: "v2.17.1"
+  images:
+    # "driver" defines the container image, used for the driver container.
+    driver:
+      image: quay.io/dell/container-storage-modules/csi-isilon:v2.17.1
+    # CSI sidecars
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.11.0
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+    registrar:
+      image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    healthmonitor:
+      image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+    # CSM sidecars
+    replication:
+      image: quay.io/dell/container-storage-modules/dell-csi-replicator:v1.15.0
+    podmon:
+      image: quay.io/dell/container-storage-modules/podmon:v1.16.0
+    authorization:
+      image: quay.io/dell/container-storage-modules/csm-authorization-sidecar:v2.5.0
+    metadataretriever:
+      image: quay.io/dell/container-storage-modules/csi-metadata-retriever:v1.14.0
+  ## Controller ATTRIBUTES
+  controller:
+    controllerCount: 2
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+    replication:
+      enabled: false
+    snapshot:
+      enabled: true
+    resizer:
+      enabled: true
+  ## Node ATTRIBUTES
+  node:
+    healthMonitor:
+      enabled: false
+    nodeSelector:
+    # Uncomment if CSM for Resiliency and CSI Driver pods monitor are enabled
+    # tolerations:
+    #   - key: "offline.vxflexos.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    #   - key: "vxflexos.podmon.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    #   - key: "offline.unity.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    #   - key: "unity.podmon.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    #   - key: "offline.isilon.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    #   - key: "isilon.podmon.storage.dell.com"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+  storageCapacity:
+    enabled: true
+  # Enable this feature only after contact support for additional information
+  podmon:
+    enabled: false
+    controller:
+      args:
+        - "--csisock=unix:/var/run/csi/csi.sock"
+        - "--labelvalue=csi-isilon"
+        - "--arrayConnectivityPollRate=60"
+        - "--driverPath=csi-isilon.dellemc.com"
+        - "--mode=controller"
+        - "--skipArrayConnectionValidation=false"
+        - "--driver-config-params=/csi-isilon-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+    node:
+      args:
+        - "--csisock=unix:/var/lib/kubelet/plugins/csi-isilon/csi_sock"
+        - "--labelvalue=csi-isilon"
+        - "--arrayConnectivityPollRate=60"
+        - "--driverPath=csi-isilon.dellemc.com"
+        - "--mode=node"
+        - "--leaderelection=false"
+        - "--driver-config-params=/csi-isilon-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+  authorization:
+    enabled: false
+    proxyHost:
+
+## CSI PowerFlex
+########################
+csi-vxflexos:
+  enabled: false
+  version: v2.17.0
+  images:
+    # "driver" defines the container image, used for the driver container.
+    driver:
+      image: quay.io/dell/container-storage-modules/csi-vxflexos:v2.17.0
+    # "powerflexSdc" defines the SDC image for init container.
+    powerflexSdc:
+      image: quay.io/dell/storage/powerflex/sdc:5.0
+    # CSI sidecars
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.11.0
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+    registrar:
+      image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    healthmonitor:
+      image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+    # CSM sidecars
+    replication:
+      image: quay.io/dell/container-storage-modules/dell-csi-replicator:v1.15.0
+    vgsnapshotter:
+      image: quay.io/dell/container-storage-modules/csi-volumegroup-snapshotter:v1.8.1
+    podmon:
+      image: quay.io/dell/container-storage-modules/podmon:v1.16.0
+    authorization:
+      image: quay.io/dell/container-storage-modules/csm-authorization-sidecar:v2.5.0
+  certSecretCount: 0
+  controller:
+    replication:
+      enabled: false
+    healthMonitor:
+      enabled: false
+    controllerCount: 2
+    snapshot:
+      enabled: true
+    resizer:
+      enabled: true
+    nodeSelector:
+  node:
+    healthMonitor:
+      enabled: false
+    sdc:
+      enabled: true
+      sdcSFTPRepo:
+        enabled: false
+        sdcSFTPRepoAddress: "sftp://0.0.0.0"
+        sdcSFTPRepoUser: "sdcSFTPRepoUser"
+        sdcSFTPRepoPrivateSecret: "sdcsftprepo-private-secret"
+        sdcSFTPRepoPublicSecret: "sdcsftprepo-public-secret"
+    nodeSelector:
+    renameSDC:
+      enabled: false
+      sdcPrefix:
+    approveSDC:
+      enabled: false
+    tolerations:
+    # Uncomment if CSM for Resiliency and CSI Driver pods monitor is enabled
+    # - key: "offline.vxflexos.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "vxflexos.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "offline.unity.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "unity.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "offline.isilon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+    # - key: "isilon.podmon.storage.dell.com"
+    #   operator: "Exists"
+    #   effect: "NoSchedule"
+  storageCapacity:
+    enabled: true
+  enableQuota: false
+  externalAccess:
+  monitor:
+    enabled: false
+  vgsnapshotter:
+    enabled: false
+  # maxVxflexosVolumesPerNode - Maximum number of volumes that controller can publish to the node.
+  maxVxflexosVolumesPerNode: 0
+  podmonAPIPort: 8083
+  authType: ""
+  podmon:
+    enabled: false
+    controller:
+      args:
+        - "--csisock=unix:/var/run/csi/csi.sock"
+        - "--labelvalue=csi-vxflexos"
+        - "--mode=controller"
+        - "--skipArrayConnectionValidation=false"
+        - "--driver-config-params=/vxflexos-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+    node:
+      args:
+        - "--csisock=unix:/var/lib/kubelet/plugins/vxflexos.emc.dell.com/csi_sock"
+        - "--labelvalue=csi-vxflexos"
+        - "--mode=node"
+        - "--leaderelection=false"
+        - "--driver-config-params=/vxflexos-config-params/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+  authorization:
+    enabled: false
+    sidecarProxyImage: quay.io/dell/container-storage-modules/csm-authorization-sidecar:v2.5.0
+    proxyHost:
+
+## CSI Unity
+########################
+csi-unity:
+  enabled: false
+  version: "v2.17.0"
+  images:
+    # "driver" defines the container image, used for the driver container.
+    driver:
+      image: quay.io/dell/container-storage-modules/csi-unity:v2.17.0
+    # CSI sidecars
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.11.0
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.5.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v2.1.0
+    registrar:
+      image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    healthmonitor:
+      image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+    # CSM sidecars
+    podmon:
+      image: quay.io/dell/container-storage-modules/podmon:v1.16.0
+  # certSecretCount: Represents number of certificate secrets, which user is going to create for
+  # ssl authentication. (unity-cert-0..unity-cert-n)
+  # Allowed values: n, where n > 0
+  certSecretCount: 1
+
+  # fsGroupPolicy: Defines if the underlying volume supports changing ownership and permission of the volume before being mounted.
+  # Allowed values:
+  #   ReadWriteOnceWithFSType: supports volume ownership and permissions change only if the fsType is defined
+  #   and the volume's accessModes contains ReadWriteOnce.
+  #   File: kubernetes may use fsGroup to change permissions and ownership of the volume
+  #   to match user requested fsGroup in the pod's security policy regardless of fstype or access mode.
+  #   None: volumes will be mounted with no modifications.
+  # Default value: ReadWriteOnceWithFSType
+  fsGroupPolicy: ReadWriteOnceWithFSType
+
+  # To set nodeSelectors and tolerations for controller.
+  # controller: configure controller pod specific parameters
+  controller:
+    controllerCount: 2
+
+    snapshot:
+      enabled: true
+
+    resizer:
+      enabled: true
+
+    nodeSelector:
+
+    healthMonitor:
+      enabled: false
+
+  # node: configure node pod specific parameters
+  node:
+    # dnsPolicy : Define the DNS Policy of the Node service.
+    # ClusterFirstWithHostNet is the recommended and default DNS policy for the driver.
+    # Prior to v1.6 of the driver, the default DNS policy was ClusterFirst.
+    # In certain scenarios, users might need to change the default dnsPolicy.
+    # Default value: None
+    dnsPolicy: "ClusterFirstWithHostNet"
+
+    healthMonitor:
+      enabled: false
+
+    nodeSelector:
+
+    # tolerations: Define tolerations for the node daemonset, if required.
+    # Default value: None
+    tolerations:
+    # Uncomment if nodes you wish to use have the node-role.kubernetes.io/master taint
+    #  - key: "node-role.kubernetes.io/master"
+    #    operator: "Exists"
+    #    effect: "NoExecute"
+    # Uncomment if nodes you wish to use have the node-role.kubernetes.io/control-plane taint
+    #  - key: "node-role.kubernetes.io/control-plane"
+    #    operator: "Exists"
+    #    effect: "NoExecute"
+    #  - key: "node.kubernetes.io/memory-pressure"
+    #    operator: "Exists"
+    #    effect: "NoExecute"
+    #  - key: "node.kubernetes.io/disk-pressure"
+    #    operator: "Exists"
+    #    effect: "NoExecute"
+    #  - key: "node.kubernetes.io/network-unavailable"
+    #    operator: "Exists"
+    #    effect: "NoExecute"
+    # Uncomment if CSM for Resiliency and CSI Driver pods monitor are enabled
+    #  - key: "offline.vxflexos.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+    #  - key: "vxflexos.podmon.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+    #  - key: "offline.unity.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+    #  - key: "unity.podmon.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+    #  - key: "offline.isilon.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+    #  - key: "isilon.podmon.storage.dell.com"
+    #    operator: "Exists"
+    #    effect: "NoSchedule"
+  podmon:
+    enabled: false
+    controller:
+      args:
+        - "--csisock=unix:/var/run/csi/csi.sock"
+        - "--labelvalue=csi-unity"
+        - "--driverPath=csi-unity.dellemc.com"
+        - "--mode=controller"
+        - "--skipArrayConnectionValidation=false"
+        - "--driver-config-params=/unity-config/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+    node:
+      args:
+        - "--csisock=unix:/var/lib/kubelet/plugins/unity.emc.dell.com/csi_sock"
+        - "--labelvalue=csi-unity"
+        - "--driverPath=csi-unity.dellemc.com"
+        - "--mode=node"
+        - "--leaderelection=false"
+        - "--driver-config-params=/unity-config/driver-config-params.yaml"
+        - "--driverPodLabelValue=dell-storage"
+        - "--ignoreVolumelessPods=false"
+
+  # allowRWOMultiPodAccess - Flag to enable sharing of volumes across multiple pods within the same node in RWO access mode.
+  allowRWOMultiPodAccess: "false"
+
+  # maxUnityVolumesPerNode - Maximum number of volumes that controller can publish to the node.
+  maxUnityVolumesPerNode: 0
+
+  # tenantName - Tenant name that need to added while adding host entry to the array.
+  tenantName: ""
+
+# Storage Capacity Tracking
+# Note: Capacity tracking is supported in kubernetes v1.24 and above, this feature will be automatically disabled in older versions.
+storageCapacity:
+  enabled: true
+
+## K8S/Module ATTRIBUTES
+##########################################
+
+## Replication
+########################
+csm-replication:
+  enabled: false
+
+## Observability
+########################
+karavi-observability:
+  enabled: false
+  karaviMetricsPowerstore:
+    enabled: false
+  karaviMetricsPowerflex:
+    enabled: false
+  karaviMetricsPowerscale:
+    enabled: false
+  karaviMetricsPowermax:
+    enabled: false
+  cert-manager:
+    enabled: false
+
+## K8S/Cert-manager ATTRIBUTES
+########################
+cert-manager:
+  enabled: false

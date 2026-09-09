@@ -1,0 +1,9 @@
+apiVersion: v2
+name: csireverseproxy
+description: A Helm chart for CSI PowerMax ReverseProxy
+
+type: application
+
+version: 2.16.1
+
+appVersion: 2.16.1

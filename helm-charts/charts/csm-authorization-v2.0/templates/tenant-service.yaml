@@ -1,0 +1,130 @@
+{{- $redisSecretProviderClass := .Values.redis.redisSecretProviderClass | default dict }}
+{{- $redisSecretProviderClassName := $redisSecretProviderClass.secretProviderClassName }}
+{{- $redisSecretName := $redisSecretProviderClass.redisSecretName }}
+
+{{- $configSecretProviderClass := .Values.config.configSecretProviderClass | default dict }}
+{{- $configSecretProviderClassName := $configSecretProviderClass.secretProviderClassName }}
+
+# Combine SPC names from different providers
+{{- $allSPCNames := (list $redisSecretProviderClassName $configSecretProviderClassName) }}
+{{- $allSPCNames = compact $allSPCNames }}
+{{- $allSPCNames = uniq $allSPCNames }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-service
+  namespace: {{ include "custom.namespace" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tenant-service-tokenreview-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: tenant-service
+    namespace: {{ include "custom.namespace" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-service
+  namespace: {{ include "custom.namespace" . }}
+  labels:
+    app: tenant-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-service
+  template:
+    metadata:
+      labels:
+        app: tenant-service
+      {{- if or (hasKey $redisSecretProviderClass "conjur") (hasKey $configSecretProviderClass "conjur") }}
+      annotations:
+        conjur.org/secrets: |
+          {{- if hasKey $redisSecretProviderClass "conjur" }}
+          {{- with $redisSecretProviderClass.conjur }}
+          - {{ .usernamePath }}: {{ .usernamePath | quote }}
+          - {{ .passwordPath }}: {{ .passwordPath | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if hasKey $configSecretProviderClass "conjur" }}
+          {{- with $configSecretProviderClass.conjur }}
+          - {{ .secretPath }}: {{ .secretPath | quote }}
+          {{- end }}
+          {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: tenant-service
+      containers:
+      - name: tenant-service
+        image: {{ required "Must provide the tenant-service image." .Values.authorization.images.tenantService.image }}
+        imagePullPolicy: Always
+        env:
+          {{- $str := "" -}}
+          {{- $ns := include "custom.namespace" . -}}
+          {{- $replicas := .Values.redis.replicas | int }}
+          {{- $sentinel := .Values.redis.sentinel }}
+          {{- range $i, $e := until $replicas }}
+          {{- if $i }}
+          {{- $str = print $str "," -}}
+          {{- end }}
+          {{- $str = printf "%s%s-%d.%s.%s.svc.cluster.local:5000" $str $sentinel $i $sentinel $ns -}}
+          {{- end }}
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $redisSecretName | default "redis-csm-secret" }}
+                key: {{ $redisSecretProviderClass.redisPasswordKey | default "password" }}
+        args:
+          - "--redis-sentinel={{ $str }}"
+          - "--redis-password=$(REDIS_PASSWORD)"
+        ports:
+        - containerPort: 50051
+          name: grpc
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/karavi-authorization/config
+        - name: csm-config-params
+          mountPath: /etc/karavi-authorization/csm-config-params
+        # secret provider class mounts
+        {{- range $name := $allSPCNames }}
+        - name: secrets-store-inline-{{ $name }}
+          mountPath: /etc/csm-authorization/{{ $name }}
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: {{ $configSecretProviderClass.configSecretName | default "karavi-config-secret" }}
+      - name: csm-config-params
+        configMap:
+          name: csm-config-params
+      # secret provider classes
+      {{- range $name := $allSPCNames }}
+      - name: secrets-store-inline-{{ $name }}
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "{{ $name }}"
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-service
+  namespace: {{ include "custom.namespace" . }}
+spec:
+  selector:
+    app: tenant-service
+  ports:
+  - port: 50051
+    targetPort: 50051
+    name: grpc

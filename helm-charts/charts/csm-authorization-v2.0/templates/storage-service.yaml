@@ -1,0 +1,222 @@
+{{- $storageSecretProviderClasses := .Values.storageSystemCredentials.secretProviderClasses | default dict }}
+
+{{- $redisSecretProviderClass := .Values.redis.redisSecretProviderClass | default dict }}
+{{- $redisSecretProviderClassName := $redisSecretProviderClass.secretProviderClassName }}
+{{- $redisSecretName := $redisSecretProviderClass.redisSecretName }}
+
+{{- $configSecretProviderClass := .Values.config.configSecretProviderClass | default dict }}
+{{- $configSecretProviderClassName := $configSecretProviderClass.secretProviderClassName }}
+
+# Get Vault SPC names directly from the storageSystemCredentials SPC list
+{{- $vaultSPCNames := $storageSecretProviderClasses.vault | default list }}
+
+# Get Conjur SPC names from each storageSystemCredentials SPC
+{{- $conjurSPCs := $storageSecretProviderClasses.conjur | default list }}
+{{- $conjurSPCNames := list }}
+{{- range $conjurSPC := $conjurSPCs }}
+  {{- $conjurSPCNames = append $conjurSPCNames $conjurSPC.name }}
+{{- end }}
+
+# Combine SPC names from different providers
+{{- $allSPCNames := concat $vaultSPCNames $conjurSPCNames (list $redisSecretProviderClassName $configSecretProviderClassName) }}
+{{- $allSPCNames = compact $allSPCNames }}
+{{- $allSPCNames = uniq $allSPCNames }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: storage-service
+  namespace: {{ include "custom.namespace" . }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-service
+rules:
+  - apiGroups: ["csm-authorization.storage.dell.com"]
+    resources: ["storages", "csmtenants", "csmroles"]
+    verbs: ["get", "list"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-service
+subjects:
+  - kind: ServiceAccount
+    name: storage-service
+    namespace: {{ include "custom.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: storage-service
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-service
+  namespace: {{ include "custom.namespace" . }}
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "update", "get", "list"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-service
+  namespace: {{ include "custom.namespace" . }}
+subjects:
+  - kind: ServiceAccount
+    name: storage-service
+    namespace: {{ include "custom.namespace" . }}
+roleRef:
+  kind: Role
+  name: storage-service
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: storage-service-tokenreview-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: storage-service
+    namespace: {{ include "custom.namespace" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-service
+  namespace: {{ include "custom.namespace" . }}
+  labels:
+    app: storage-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-service
+  template:
+    metadata:
+      labels:
+        app: storage-service
+      {{- if or (hasKey $storageSecretProviderClasses "conjur") (hasKey $redisSecretProviderClass "conjur") (hasKey $configSecretProviderClass "conjur") }}
+      annotations:
+        conjur.org/secrets: |
+          {{- if hasKey $storageSecretProviderClasses "conjur" }}
+          {{- range $storageSecretProviderClasses.conjur }}
+          {{- range .paths }}
+          - {{ .usernamePath }}: {{ .usernamePath | quote }}
+          - {{ .passwordPath }}: {{ .passwordPath | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- if hasKey $redisSecretProviderClass "conjur" }}
+          {{- with $redisSecretProviderClass.conjur }}
+          - {{ .usernamePath }}: {{ .usernamePath | quote }}
+          - {{ .passwordPath }}: {{ .passwordPath | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if hasKey $configSecretProviderClass "conjur" }}
+          {{- with $configSecretProviderClass.conjur }}
+          - {{ .secretPath }}: {{ .secretPath | quote }}
+          {{- end }}
+          {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: storage-service
+      containers:
+      - name: storage-service
+        image: {{ required "Must provide the storage-service image." .Values.authorization.images.storageService.image }}
+        imagePullPolicy: Always
+        env:
+          {{- $str := "" -}}
+          {{- $ns := include "custom.namespace" . -}}
+          {{- $replicas := .Values.redis.replicas | int }}
+          {{- $sentinel := .Values.redis.sentinel }}
+          {{- range $i, $e := until $replicas }}
+          {{- if $i }}
+          {{- $str = print $str "," -}}
+          {{- end }}
+          {{- $str = printf "%s%s-%d.%s.%s.svc.cluster.local:5000" $str $sentinel $i $sentinel $ns -}}
+          {{- end }}
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $redisSecretName | default "redis-csm-secret" }}
+                key: {{ $redisSecretProviderClass.redisPasswordKey | default "password" }}
+        args:
+          - "--redis-sentinel={{ $str }}"
+          - "--redis-password=$(REDIS_PASSWORD)"
+          - "--leader-election=true"
+          - "--collector-address={{ .Values.authorization.openTelemetryCollectorAddress}}"
+        ports:
+        - containerPort: 50051
+          name: grpc
+        - containerPort: 2112
+          name: promhttp
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/karavi-authorization/config
+        - name: csm-config-params
+          mountPath: /etc/karavi-authorization/csm-config-params
+        # secret provider class mounts
+        {{- range $name := $allSPCNames }}
+        - name: secrets-store-inline-{{ $name }}
+          mountPath: /etc/csm-authorization/{{ $name }}
+          readOnly: true
+        {{- end }}
+        # kubernetes secret mount
+        {{- if .Values.storageSystemCredentials.secrets }}
+        {{- range .Values.storageSystemCredentials.secrets }}
+        - name: storage-system-secrets-{{ . }}
+          mountPath: /etc/csm-authorization/{{ . }}
+          readOnly: true
+        {{- end }}
+        {{- end }}
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: {{ $configSecretProviderClass.configSecretName | default "karavi-config-secret" }}
+      - name: csm-config-params
+        configMap:
+          name: csm-config-params
+      # secret provider classes
+      {{- range $name := $allSPCNames }}
+      - name: secrets-store-inline-{{ $name }}
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "{{ $name }}"
+      {{- end }}
+      # kubernetes secret
+      {{- if .Values.storageSystemCredentials.secrets }}
+      {{- range .Values.storageSystemCredentials.secrets }}
+      - name: storage-system-secrets-{{ . }}
+        secret:
+          secretName: {{ . }}
+      {{- end }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-service
+  namespace: {{ include "custom.namespace" . }}
+spec:
+  selector:
+    app: storage-service
+  ports:
+  - port: 50051
+    targetPort: 50051
+    name: grpc
+  - port: 2112
+    targetPort: 2112
+    name: promhttp

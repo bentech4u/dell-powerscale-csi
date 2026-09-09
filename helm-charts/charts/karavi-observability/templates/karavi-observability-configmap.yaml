@@ -1,0 +1,108 @@
+{{ if .Values.karaviMetricsPowerflex.enabled }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karavi-metrics-powerflex-configmap
+  namespace: {{ include "custom.namespace" . }}
+data:
+  karavi-metrics-powerflex.yaml : |
+    COLLECTOR_ADDR: {{ .Values.karaviMetricsPowerflex.collectorAddr }}
+    PROVISIONER_NAMES: {{ .Values.karaviMetricsPowerflex.provisionerNames }}
+    POWERFLEX_SDC_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerflex.sdcMetricsEnabled }}"
+    POWERFLEX_SDC_IO_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerflex.sdcPollFrequencySeconds }}"
+    POWERFLEX_VOLUME_IO_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerflex.volumePollFrequencySeconds }}"
+    POWERFLEX_VOLUME_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerflex.volumeMetricsEnabled }}"
+    POWERFLEX_STORAGE_POOL_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerflex.storageClassPoolMetricsEnabled }}"
+    POWERFLEX_STORAGE_POOL_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerflex.storageClassPoolPollFrequencySeconds }}"
+    POWERFLEX_MAX_CONCURRENT_QUERIES: "{{ .Values.karaviMetricsPowerflex.concurrentPowerflexQueries }}"
+    POWERFLEX_TOPOLOGY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerflex.topologyMetricsEnabled }}"
+    POWERFLEX_TOPOLOGY_METRICS_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerflex.topologyMetricsPollFrequencySeconds }}"    
+    LOG_LEVEL: "{{ .Values.karaviMetricsPowerflex.logLevel }}"
+    LOG_FORMAT: "{{ .Values.karaviMetricsPowerflex.logFormat }}"
+
+{{ end }}
+
+---
+
+{{ if .Values.karaviMetricsPowerstore.enabled }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karavi-metrics-powerstore-configmap
+  namespace: {{ include "custom.namespace" . }}
+data:
+  karavi-metrics-powerstore.yaml : |
+    COLLECTOR_ADDR: {{ .Values.karaviMetricsPowerstore.collectorAddr }}
+    PROVISIONER_NAMES: {{ .Values.karaviMetricsPowerstore.provisionerNames }}
+    POWERSTORE_VOLUME_IO_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerstore.volumePollFrequencySeconds }}"
+    POWERSTORE_VOLUME_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerstore.volumeMetricsEnabled }}"
+    POWERSTORE_MAX_CONCURRENT_QUERIES: "{{ .Values.karaviMetricsPowerstore.concurrentPowerstoreQueries }}"
+    POWERSTORE_SPACE_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerstore.spacePollFrequencySeconds }}"
+    POWERSTORE_ARRAY_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerstore.arrayPollFrequencySeconds }}"
+    POWERSTORE_FILE_SYSTEM_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerstore.filesystemPollFrequencySeconds }}"
+    POWERSTORE_TOPOLOGY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerstore.topologyMetricsEnabled }}"
+    POWERSTORE_TOPOLOGY_METRICS_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerstore.topologyMetricsPollFrequencySeconds }}"
+    X_CSI_POWERSTORE_API_TIMEOUT: "{{ .Values.karaviMetricsPowerstore.apiTimeout }}"
+    LOG_LEVEL: "{{ .Values.karaviMetricsPowerstore.logLevel }}"
+    LOG_FORMAT: "{{ .Values.karaviMetricsPowerstore.logFormat }}"
+    ZIPKIN_URI: "{{ .Values.karaviMetricsPowerstore.zipkin.uri }}"
+    ZIPKIN_SERVICE_NAME: "{{ .Values.karaviMetricsPowerstore.zipkin.serviceName }}"
+    ZIPKIN_PROBABILITY: "{{ .Values.karaviMetricsPowerstore.zipkin.probability }}"
+
+{{ end }}
+
+---
+
+{{ if .Values.karaviMetricsPowerscale.enabled }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karavi-metrics-powerscale-configmap
+  namespace: {{ include "custom.namespace" . }}
+data:
+  karavi-metrics-powerscale.yaml : |
+    COLLECTOR_ADDR: {{ .Values.karaviMetricsPowerscale.collectorAddr }}
+    PROVISIONER_NAMES: {{ .Values.karaviMetricsPowerscale.provisionerNames }}
+    POWERSCALE_MAX_CONCURRENT_QUERIES: "{{ .Values.karaviMetricsPowerscale.concurrentPowerscaleQueries }}"
+    POWERSCALE_CAPACITY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerscale.capacityMetricsEnabled }}"
+    POWERSCALE_PERFORMANCE_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerscale.performanceMetricsEnabled }}"
+    POWERSCALE_TOPOLOGY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowerscale.topologyMetricsEnabled }}"
+    POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerscale.clusterCapacityPollFrequencySeconds }}"
+    POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerscale.clusterPerformancePollFrequencySeconds }}"
+    POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerscale.quotaCapacityPollFrequencySeconds }}"
+    POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowerscale.topologyMetricsPollFrequencySeconds }}"
+    POWERSCALE_ISICLIENT_INSECURE: "{{ .Values.karaviMetricsPowerscale.isiClientOptions.isiSkipCertificateValidation }}"
+    POWERSCALE_ISICLIENT_AUTH_TYPE: "{{ .Values.karaviMetricsPowerscale.isiClientOptions.isiAuthType }}"
+    POWERSCALE_ISICLIENT_VERBOSE: "{{ .Values.karaviMetricsPowerscale.isiClientOptions.isiLogVerbose }}"
+    LOG_LEVEL: "{{ .Values.karaviMetricsPowerscale.logLevel }}"
+    LOG_FORMAT: "{{ .Values.karaviMetricsPowerscale.logFormat }}"
+
+{{ end }}
+
+---
+
+{{ if .Values.karaviMetricsPowermax.enabled }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karavi-metrics-powermax-configmap
+  namespace: {{ include "custom.namespace" . }}
+data:
+  karavi-metrics-powermax.yaml : |
+    COLLECTOR_ADDR: {{ .Values.karaviMetricsPowermax.collectorAddr }}
+    PROVISIONER_NAMES: {{ .Values.karaviMetricsPowermax.provisionerNames }}
+    POWERMAX_MAX_CONCURRENT_QUERIES: "{{ .Values.karaviMetricsPowermax.concurrentPowermaxQueries }}"
+    POWERMAX_CAPACITY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowermax.capacityMetricsEnabled }}"
+    POWERMAX_PERFORMANCE_METRICS_ENABLED: "{{ .Values.karaviMetricsPowermax.performanceMetricsEnabled }}"
+    POWERMAX_CAPACITY_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowermax.capacityPollFrequencySeconds }}"
+    POWERMAX_PERFORMANCE_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowermax.performancePollFrequencySeconds }}"
+    POWERMAX_TOPOLOGY_METRICS_ENABLED: "{{ .Values.karaviMetricsPowermax.topologyMetricsEnabled }}"
+    POWERMAX_TOPOLOGY_METRICS_POLL_FREQUENCY: "{{ .Values.karaviMetricsPowermax.topologyMetricsPollFrequencySeconds }}"
+    LOG_LEVEL: "{{ .Values.karaviMetricsPowermax.logLevel }}"
+    LOG_FORMAT: "{{ .Values.karaviMetricsPowermax.logFormat }}"
+
+{{ end }}

@@ -1,0 +1,52 @@
+---
+# "version" is used to verify the values file matches driver version
+# Not recommend to change
+version: v1.1.0
+
+# "images" defines every container images used for the driver and its sidecar.
+#  To use your own images, or a private registry, change the values here.
+images:
+  provisioner:
+    image: quay.io/dell/container-storage-modules/cosi:v1.1.0
+  sidecar:
+    image: gcr.io/k8s-staging-sig-storage/objectstorage-sidecar:release-0.2
+
+# COSI driver log level
+# Allowed values: "error", "warn"/"warning", "info", "debug"
+# Default value: "info"
+logLevel: "info"
+
+# COSI driver log format
+# Allowed values: "TEXT" or "JSON"
+# Default value: "TEXT"
+logFormat: "TEXT"
+
+# imagePullPolicy: Policy to determine if the image should be pulled prior to starting the container.
+# Allowed values:
+#  Always: Always pull the image.
+#  IfNotPresent: Only pull the image if it does not already exist on the node.
+#  Never: Never pull the image.
+# Default value: None
+imagePullPolicy: IfNotPresent
+
+# OpenTelemetry collector endpoint for the COSI driver and sidecar
+# Default value: ""
+otelEndpoint: ""
+
+# replicaCount specifies the number of replicas of the COSI driver.
+# Allowed values: n, where n > 0
+# Default value: 1
+replicaCount: 1
+
+# Node selector for scheduling the COSI driver pod
+# Leave as blank to use all nodes
+# Allowed values: map of key-value pairs
+# Default value: None
+# Examples:
+#  node-role.kubernetes.io/control-plane: ""
+nodeSelector: {}
+
+# Tolerations for scheduling the COSI driver pod
+# Leave as blank to install the driver on worker nodes
+# Default value: None
+tolerations: []

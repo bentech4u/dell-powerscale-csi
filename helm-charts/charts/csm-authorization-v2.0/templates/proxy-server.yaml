@@ -1,0 +1,225 @@
+{{- $redisSecretProviderClass := .Values.redis.redisSecretProviderClass | default dict }}
+{{- $redisSecretProviderClassName := $redisSecretProviderClass.secretProviderClassName }}
+{{- $redisSecretName := $redisSecretProviderClass.redisSecretName }}
+
+{{- $configSecretProviderClass := .Values.config.configSecretProviderClass | default dict }}
+{{- $configSecretProviderClassName := $configSecretProviderClass.secretProviderClassName }}
+
+# Combine SPC names from different providers
+{{- $allSPCNames := (list $redisSecretProviderClassName $configSecretProviderClassName) }}
+{{- $allSPCNames = compact $allSPCNames }}
+{{- $allSPCNames = uniq $allSPCNames }}
+---
+# Grant OPA/kube-mgmt read-only access to resources. This lets kube-mgmt
+# list configmaps to be loaded into OPA as policies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name:  csm-auth-view
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: opa-viewer
+roleRef:
+  kind: ClusterRole
+  name:  csm-auth-view
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: Group
+  name: system:serviceaccounts:{{ include "custom.namespace" . }}
+  apiGroup: rbac.authorization.k8s.io
+---
+# Define role for OPA/kube-mgmt to update configmaps with policy status.
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ include "custom.namespace" . }}
+  name: configmap-modifier
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["update", "patch"]
+---
+# Grant OPA/kube-mgmt role defined above.
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: {{ include "custom.namespace" . }}
+  name: opa-configmap-modifier
+roleRef:
+  kind: Role
+  name: configmap-modifier
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: Group
+  name: system:serviceaccounts:{{ include "custom.namespace" . }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: proxy-server
+  namespace: {{ include "custom.namespace" . }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: proxy-server
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["watch"]
+  - apiGroups: ["csm-authorization.storage.dell.com"]
+    resources: ["storages", "csmtenants"]
+    verbs: ["get", "list"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: proxy-server
+subjects:
+  - kind: ServiceAccount
+    name: proxy-server
+    namespace: {{ include "custom.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: proxy-server
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: proxy-server-tokenreview-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: proxy-server
+    namespace: {{ include "custom.namespace" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy-server
+  namespace: {{ include "custom.namespace" . }}
+  labels:
+    app: proxy-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy-server
+  template:
+    metadata:
+      labels:
+        app: proxy-server
+      {{- if or (hasKey $redisSecretProviderClass "conjur") (hasKey $configSecretProviderClass "conjur") }}
+      annotations:
+        conjur.org/secrets: |
+          {{- if hasKey $redisSecretProviderClass "conjur" }}
+          {{- with $redisSecretProviderClass.conjur }}
+          - {{ .usernamePath }}: {{ .usernamePath | quote }}
+          - {{ .passwordPath }}: {{ .passwordPath | quote }}
+          {{- end }}
+          {{- end }}
+          {{- if hasKey $configSecretProviderClass "conjur" }}
+          {{- with $configSecretProviderClass.conjur }}
+          - {{ .secretPath }}: {{ .secretPath | quote }}
+          {{- end }}
+          {{- end }}
+      {{- end }}
+    spec:
+      serviceAccount: proxy-server
+      containers:
+      - name: proxy-server
+        image: {{ required "Must provide the proxy-server image." .Values.authorization.images.proxyService.image }}
+        imagePullPolicy: Always
+        env:
+          {{- $str := "" -}}
+          {{- $ns := include "custom.namespace" . -}}
+          {{- $replicas := .Values.redis.replicas | int }}
+          {{- $sentinel := .Values.redis.sentinel }}
+          {{- range $i, $e := until $replicas }}
+          {{- if $i }}
+          {{- $str = print $str "," -}}
+          {{- end }}
+          {{- $str = printf "%s%s-%d.%s.%s.svc.cluster.local:5000" $str $sentinel $i $sentinel $ns -}}
+          {{- end }}
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ $redisSecretName | default "redis-csm-secret" }}
+                key: {{ $redisSecretProviderClass.redisPasswordKey | default "password" }}
+        args:
+          - "--redis-sentinel={{ $str }}"
+          - "--redis-password=$(REDIS_PASSWORD)"
+          - "--tenant-service=tenant-service.{{ .Release.Namespace }}.svc.cluster.local:50051"
+          - "--role-service=role-service.{{ .Release.Namespace }}.svc.cluster.local:50051"
+          - "--storage-service=storage-service.{{ .Release.Namespace }}.svc.cluster.local:50051"
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/karavi-authorization/config
+        - name: csm-config-params
+          mountPath: /etc/karavi-authorization/csm-config-params
+        # secret provider class mounts
+        {{- range $name := $allSPCNames }}
+        - name: secrets-store-inline-{{ $name }}
+          mountPath: /etc/csm-authorization/{{ $name }}
+          readOnly: true
+        {{- end }}
+      - name: opa
+        image: {{ required "Must provide the openpolicyagent image." .Values.authorization.images.opa.image }}
+        imagePullPolicy: IfNotPresent
+        args:
+        - "run"
+        - "--ignore=."
+        - "--server"
+        - "--log-level=debug"
+        ports:
+        - name: http
+          containerPort: 8181
+      - name: kube-mgmt
+        image: {{ required "Must provide the opaKubeMgmt image." .Values.authorization.images.opaKubeMgmt.image }}
+        imagePullPolicy: IfNotPresent
+        args:
+        - "--namespaces={{ include "custom.namespace" . }}"
+        - "--enable-data"
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: {{ $configSecretProviderClass.configSecretName | default "karavi-config-secret" }}
+      - name: csm-config-params
+        configMap:
+          name: csm-config-params
+      # secret provider classes
+      {{- range $name := $allSPCNames }}
+      - name: secrets-store-inline-{{ $name }}
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "{{ $name }}"
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxy-server
+  namespace: {{ include "custom.namespace" . }}
+spec:
+  selector:
+    app: proxy-server
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080

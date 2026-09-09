@@ -8,6 +8,9 @@ The scripts clone https://github.com/dell/helm-charts at tag csi-isilon-2.17.1 o
 
 ```
 dell-csi-helm-installer/     Dell's installer scripts, copied from csi-powerscale (CSM 1.17.1, Apache-2.0)
+helm-charts/                 Dell helm-charts checkout at tag csi-isilon-2.17.1 (vendored, no clone at run time)
+bin/helm                     helm v3.19.0 linux/amd64 (+ .sha256); bin/kubectl is a shim that execs oc
+images.txt                   container images the driver pulls (for mirroring in disconnected clusters)
 my-isilon-settings.yaml      helm values (from helm-charts tag csi-isilon-2.17.1)
 secrets/isilon-creds.yaml    OneFS API credentials -> secret isilon-creds (git-ignored, fill in!)
 secrets/isilon-certs-0.yaml  empty CA secret isilon-certs-0 (required even when skipping TLS checks)
@@ -62,9 +65,41 @@ Notes on the flags:
 * `--skip-verify` skips all verification, not recommended.
 * `-h` on any script prints its full usage.
 
+## OpenShift
+
+There is no separate OpenShift install. Dell's `csi-install.sh` checks for the
+`securitycontextconstraints.security.openshift.io` CRD and, when found, runs helm with
+`--set openshift=true`, which makes the chart add the privileged SCC bindings and the OpenShift CSI
+annotations. The scripts only ever call `kubectl`; on OpenShift `oc` is a superset, so `bin/kubectl`
+is a one-line shim that runs `oc`. `install.sh` uses `oc` directly for everything it does itself.
+
+## Offline install
+
+What is in the repo and needs no internet on the installer host:
+
+* `bin/helm` (v3.19.0). Verify with `sha256sum -c bin/helm.sha256`.
+* `helm-charts/` at tag csi-isilon-2.17.1. `csi-install.sh` skips its `git clone` when this directory
+  exists next to `dell-csi-helm-installer/`.
+* `dell-csi-helm-installer/` scripts and `my-isilon-settings.yaml`.
+
+What is **not** in the repo: `oc` (ship it with your cluster tooling) and the container images. The
+cluster nodes pull the images in `images.txt` from quay.io and registry.k8s.io. For a disconnected
+cluster, mirror them to your registry and point the cluster at it, for example:
+
+```bash
+# on a connected host with podman/oc logged in to your registry
+while read img; do oc image mirror "$img" "myregistry.bentech.work:5000/${img#*/}"; done < images.txt
+```
+
+then either edit the `images:` section of `my-isilon-settings.yaml` to the mirrored names, or create an
+`ImageDigestMirrorSet`/`ImageTagMirrorSet` mapping `quay.io/dell` and `registry.k8s.io/sig-storage` to
+your registry. Only the seven images referenced by the default values (driver + six sidecars) are needed
+unless you enable replication, authorization or podmon.
+
 ## Notes
 
-* Tools installed on this host: helm 3.19 in /usr/local/bin, `kubectl` symlinked to the cluster's `oc`.
+* `install.sh` prepends `bin/` to PATH, so the vendored helm is used and Dell's `kubectl` calls go to `oc`.
+  Only `oc` has to be present on the host.
 * KUBECONFIG defaults to /opt/ocpdeploy/clusters/homeshift/install/auth/kubeconfig.
 * Node SSH verification is skipped (RHCOS has no root SSH). NFS client is present on the nodes (nfs-utils).
 * Dell's verify script flags OpenShift 4.22 as "newer than tested (4.21)"; that is a warning only.
